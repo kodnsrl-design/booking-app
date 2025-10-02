@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Holidays from "date-holidays"; // ✅ 한국 공휴일 라이브러리
 
 export default function App() {
   const today = new Date();
@@ -14,6 +15,18 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
   const [pin, setPin] = useState("");
+
+  // 한국 공휴일 자동 가져오기
+  const [holidays, setHolidays] = useState([]);
+  useEffect(() => {
+    const hd = new Holidays("KR");
+    const holidayList = hd.getHolidays(year)
+      .map(h => {
+        const d = new Date(h.date);
+        return `${String(d.getMonth() + 1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      });
+    setHolidays(holidayList);
+  }, [year]);
 
   // 저장된 예약 업데이트
   useEffect(() => {
@@ -47,28 +60,20 @@ export default function App() {
       setReservations(newRes);
       setSelectedDay(null);
     } else if (current.length >= 2) {
-      // 이미 2명 예약
       alert("이 날짜는 이미 2명이 예약했습니다!");
     } else {
-      // 예약 가능 → 추가
       setReservations((prev) => ({ ...prev, [key]: [...current, user.name] }));
       setSelectedDay(null);
     }
   };
 
-  const handleBack = () => {
-    setSelectedDay(null);
-  };
+  const handleBack = () => setSelectedDay(null);
 
   const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = new Date(year, month, 1).getDay();
 
-  // 요일 배열 (일~토)
   const weekdays = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
-
-  // 공휴일 예시 (MM-DD 형식)
-  const holidays = ["01-01", "12-25"]; 
 
   // 요일/공휴일 색상
   const getDateColor = (day) => {
@@ -80,11 +85,10 @@ export default function App() {
     return "#000"; // 평일 검정
   };
 
-  // 지난 날짜 판별
   const isPastDate = (day) => {
     const date = new Date(year, month, day);
     const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0); // 오늘 00:00 기준
+    todayDate.setHours(0, 0, 0, 0);
     return date < todayDate;
   };
 
@@ -112,13 +116,7 @@ export default function App() {
           />
           <button 
             onClick={handleSignup} 
-            style={{ 
-              padding: "5px 10px", 
-              borderRadius: "5px", 
-              backgroundColor: "#87cefa", 
-              border: "none", 
-              cursor: "pointer" 
-            }}
+            style={{ padding: "5px 10px", borderRadius: "5px", backgroundColor: "#87cefa", border: "none", cursor: "pointer" }}
           >
             회원가입
           </button>
@@ -143,20 +141,9 @@ export default function App() {
           </div>
 
           {/* 요일 헤더 */}
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(7, 1fr)", 
-            textAlign: "center", 
-            fontWeight: "bold", 
-            marginBottom: "10px" 
-          }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontWeight: "bold", marginBottom: "10px" }}>
             {weekdays.map((day, idx) => (
-              <div 
-                key={day} 
-                style={{ 
-                  color: idx === 0 ? "#FF4C4C" : idx === 6 ? "#1E90FF" : "#000" 
-                }}
-              >
+              <div key={day} style={{ color: idx === 0 ? "#FF4C4C" : idx === 6 ? "#1E90FF" : "#000" }}>
                 {day}
               </div>
             ))}
@@ -182,21 +169,12 @@ export default function App() {
                     padding: "5px",
                     textAlign: "center",
                     cursor: past ? "not-allowed" : "pointer",
-                    backgroundColor: past
-                      ? "#A9A9A9" // 지난 날짜 = 진한 회색
-                      : selectedDay === day
-                      ? "#e0f7fa"
-                      : "transparent",
+                    backgroundColor: past ? "#A9A9A9" : selectedDay === day ? "#e0f7fa" : "transparent",
                   }}
-                  onClick={() => !past && setSelectedDay(day)} // 지난 날짜 선택 불가
+                  onClick={() => !past && setSelectedDay(day)}
                 >
                   <div style={{ color: getDateColor(day) }}>{day}일</div>
-                  <div 
-                    style={{ 
-                      fontSize: "12px", 
-                      color: isMyReservation ? "#0066CC" : current.length > 0 ? "#555" : "#555" 
-                    }}
-                  >
+                  <div style={{ fontSize: "12px", color: isMyReservation ? "#0066CC" : current.length > 0 ? "#555" : "#555" }}>
                     {current.length > 0 ? current.join(", ") : "예약 없음"}
                   </div>
                 </div>
@@ -210,84 +188,18 @@ export default function App() {
               <h3>{year}년 {month + 1}월 {selectedDay}일 예약</h3>
               {reservations[`${year}-${month + 1}-${selectedDay}`]?.includes(user.name) ? (
                 <>
-                  <button 
-                    onClick={handleReserve} 
-                    style={{ 
-                      padding: "5px 10px", 
-                      border: "none", 
-                      borderRadius: "5px", 
-                      backgroundColor: "#87cefa", 
-                      cursor: "pointer", 
-                      marginRight: "10px" 
-                    }}
-                  >
-                    예약 취소
-                  </button>
-                  <button 
-                    onClick={handleBack} 
-                    style={{ 
-                      padding: "5px 10px", 
-                      border: "none", 
-                      borderRadius: "5px", 
-                      backgroundColor: "#ccc", 
-                      cursor: "pointer" 
-                    }}
-                  >
-                    돌아가기
-                  </button>
+                  <button onClick={handleReserve} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#87cefa", cursor: "pointer", marginRight: "10px" }}>예약 취소</button>
+                  <button onClick={handleBack} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "pointer" }}>돌아가기</button>
                 </>
               ) : reservations[`${year}-${month + 1}-${selectedDay}`]?.length >= 2 ? (
                 <>
-                  <button disabled style={{ 
-                    padding: "5px 10px", 
-                    border: "none", 
-                    borderRadius: "5px", 
-                    backgroundColor: "#ccc", 
-                    cursor: "not-allowed", 
-                    marginRight: "10px" 
-                  }}>
-                    예약 불가
-                  </button>
-                  <button 
-                    onClick={handleBack} 
-                    style={{ 
-                      padding: "5px 10px", 
-                      border: "none", 
-                      borderRadius: "5px", 
-                      backgroundColor: "#ccc", 
-                      cursor: "pointer" 
-                    }}
-                  >
-                    돌아가기
-                  </button>
+                  <button disabled style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "not-allowed", marginRight: "10px" }}>예약 불가</button>
+                  <button onClick={handleBack} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "pointer" }}>돌아가기</button>
                 </>
               ) : (
                 <>
-                  <button 
-                    onClick={handleReserve} 
-                    style={{ 
-                      padding: "5px 10px", 
-                      border: "none", 
-                      borderRadius: "5px", 
-                      backgroundColor: "#87cefa", 
-                      cursor: "pointer", 
-                      marginRight: "10px" 
-                    }}
-                  >
-                    예약하기
-                  </button>
-                  <button 
-                    onClick={handleBack} 
-                    style={{ 
-                      padding: "5px 10px", 
-                      border: "none", 
-                      borderRadius: "5px", 
-                      backgroundColor: "#ccc", 
-                      cursor: "pointer" 
-                    }}
-                  >
-                    돌아가기
-                  </button>
+                  <button onClick={handleReserve} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#87cefa", cursor: "pointer", marginRight: "10px" }}>예약하기</button>
+                  <button onClick={handleBack} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "pointer" }}>돌아가기</button>
                 </>
               )}
             </div>
