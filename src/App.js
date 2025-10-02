@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import Holidays from "date-holidays"; // ✅ 한국 공휴일 라이브러리
+import Holidays from "date-holidays"; // 한국 공휴일 라이브러리
 
 export default function App() {
   const today = new Date();
@@ -16,11 +16,12 @@ export default function App() {
   });
   const [pin, setPin] = useState("");
 
-  // 한국 공휴일 자동 가져오기
+  // 한국 공휴일 자동 가져오기 (대체공휴일 포함)
   const [holidays, setHolidays] = useState([]);
   useEffect(() => {
     const hd = new Holidays("KR");
     const holidayList = hd.getHolidays(year)
+      .filter(h => h.type === "public") // 법정공휴일만
       .map(h => {
         const d = new Date(h.date);
         return `${String(d.getMonth() + 1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
