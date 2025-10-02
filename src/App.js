@@ -4,165 +4,295 @@ export default function App() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth()); // 0~11
-  const [reservations, setReservations] = useState({}); // key: "YYYY-M-D", value: name
-  const [users, setUsers] = useState([]); // { name, pin }
-  const [selectedDay, setSelectedDay] = useState(null); // 선택한 날짜
-  const [isAuthOpen, setIsAuthOpen] = useState(false); // 로그인/회원가입 화면 표시
-  const [authName, setAuthName] = useState(""); // 입력 이름
-  const [authPin, setAuthPin] = useState(""); // 입력 PIN
-  const [isLoginMode, setIsLoginMode] = useState(true); // 로그인 모드/회원가입 모드
+  const [reservations, setReservations] = useState(() => {
+    return JSON.parse(localStorage.getItem("reservations") || "{}");
+  });
+  const [inputName, setInputName] = useState(""); 
+  const [selectedDay, setSelectedDay] = useState(null); 
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem("user");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [pin, setPin] = useState("");
 
-  // --- localStorage에서 초기 데이터 불러오기 ---
-  useEffect(() => {
-    const savedRes = localStorage.getItem("reservations");
-    const savedUsers = localStorage.getItem("users");
-    if (savedRes) setReservations(JSON.parse(savedRes));
-    if (savedUsers) setUsers(JSON.parse(savedUsers));
-  }, []);
-
-  // --- reservations 변경 시 localStorage 저장 ---
+  // 저장된 예약 업데이트
   useEffect(() => {
     localStorage.setItem("reservations", JSON.stringify(reservations));
   }, [reservations]);
 
-  // --- users 변경 시 localStorage 저장 ---
-  useEffect(() => {
-    localStorage.setItem("users", JSON.stringify(users));
-  }, [users]);
+  // 회원가입 함수
+  const handleSignup = () => {
+    if (!inputName.trim() || pin.length !== 4) {
+      alert("이름과 4자리 PIN을 정확히 입력하세요.");
+      return;
+    }
+    const newUser = { name: inputName.trim(), pin };
+    setUser(newUser);
+    localStorage.setItem("user", JSON.stringify(newUser));
+    setInputName("");
+    setPin("");
+  };
+
+  // 하루 2명 예약 가능 handleReserve
+  const handleReserve = () => {
+    if (!selectedDay) return;
+    const key = `${year}-${month + 1}-${selectedDay}`;
+    const current = reservations[key] || [];
+
+    if (current.includes(user.name)) {
+      // 본인 예약 취소
+      const newRes = { ...reservations };
+      newRes[key] = current.filter((name) => name !== user.name);
+      if (newRes[key].length === 0) delete newRes[key];
+      setReservations(newRes);
+      setSelectedDay(null);
+    } else if (current.length >= 2) {
+      // 이미 2명 예약
+      alert("이 날짜는 이미 2명이 예약했습니다!");
+    } else {
+      // 예약 가능 → 추가
+      setReservations((prev) => ({ ...prev, [key]: [...current, user.name] }));
+      setSelectedDay(null);
+    }
+  };
+
+  const handleBack = () => {
+    setSelectedDay(null);
+  };
 
   const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = new Date(year, month, 1).getDay();
 
-  // --- 예약 클릭 처리 ---
-  const handleDayClick = (day) => {
-    setSelectedDay(day);
-    setIsAuthOpen(true); // 예약 시 로그인/회원가입 화면 열기
+  // 요일 배열 (일~토)
+  const weekdays = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+
+  // 공휴일 예시 (MM-DD 형식)
+  const holidays = ["01-01", "12-25"]; 
+
+  // 요일/공휴일 색상
+  const getDateColor = (day) => {
+    const date = new Date(year, month, day);
+    const dayOfWeek = date.getDay();
+    const mmdd = `${String(month + 1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    if (holidays.includes(mmdd) || dayOfWeek === 0) return "#FF4C4C"; // 일요일/공휴일 빨강
+    if (dayOfWeek === 6) return "#1E90FF"; // 토요일 파랑
+    return "#000"; // 평일 검정
   };
 
-  // --- 로그인 처리 ---
-  const handleLogin = () => {
-    const user = users.find(u => u.name === authName && u.pin === authPin);
-    if (!user) {
-      alert("회원 정보가 없거나 PIN이 잘못되었습니다.");
-      return;
-    }
-    handleReserve(user.name);
-    setAuthName(""); setAuthPin(""); setIsAuthOpen(false);
-  };
-
-  // --- 회원가입 처리 ---
-  const handleSignup = () => {
-    if (!authName.trim() || authPin.length !== 4) {
-      alert("이름과 4자리 PIN을 입력하세요.");
-      return;
-    }
-    if (users.find(u => u.name === authName)) {
-      alert("이미 등록된 이름입니다.");
-      return;
-    }
-    const newUser = { name: authName.trim(), pin: authPin };
-    setUsers(prev => [...prev, newUser]);
-    alert("회원가입 완료! 로그인 후 예약하세요.");
-    setAuthName(""); setAuthPin(""); setIsLoginMode(true);
-  };
-
-  // --- 예약 / 취소 처리 ---
-  const handleReserve = (name) => {
-    if (!selectedDay) return;
-    const key = `${year}-${month + 1}-${selectedDay}`;
-    const current = reservations[key];
-
-    if (!current) {
-      // 예약 없음 → 등록
-      setReservations(prev => ({ ...prev, [key]: name }));
-    } else if (current === name) {
-      // 본인 예약 취소
-      const newRes = { ...reservations };
-      delete newRes[key];
-      setReservations(newRes);
-    } else {
-      // 다른 사람 예약 → 불가
-      alert(`${current}님이 이미 예약했습니다!`);
-    }
-    setSelectedDay(null);
+  // 지난 날짜 판별
+  const isPastDate = (day) => {
+    const date = new Date(year, month, day);
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0); // 오늘 00:00 기준
+    return date < todayDate;
   };
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1 style={{ textAlign: "center" }}>🏠 가족 숙소 예약</h1>
+      <h1 style={{ textAlign: "center" }}>🏠 숙소 예약 공유</h1>
 
-      {/* 연도/월 선택 */}
-      <div style={{ marginBottom: "20px", textAlign: "center" }}>
-        <select value={year} onChange={e => setYear(Number(e.target.value))}>
-          {Array.from({ length: 5 }, (_, i) => today.getFullYear() - 2 + i)
-            .map(y => <option key={y} value={y}>{y}년</option>)}
-        </select>
-        <select value={month} onChange={e => setMonth(Number(e.target.value))} style={{ marginLeft: "10px" }}>
-          {Array.from({ length: 12 }, (_, i) => i)
-            .map(m => <option key={m} value={m}>{m + 1}월</option>)}
-        </select>
-      </div>
-
-      {/* 요일 헤더 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", textAlign: "center", fontWeight: "bold", marginBottom: "10px" }}>
-        {["일","월","화","수","목","금","토"].map(d => <div key={d}>{d}</div>)}
-      </div>
-
-      {/* 달력 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "10px" }}>
-        {Array.from({ length: firstDay }).map((_,i)=><div key={`empty-${i}`}></div>)}
-        {Array.from({ length: daysInMonth }).map((_,i)=>{
-          const day = i+1;
-          const key = `${year}-${month+1}-${day}`;
-          const current = reservations[key];
-          return (
-            <div key={day}
-              style={{
-                border:"1px solid #ccc",
-                borderRadius:"5px",
-                padding:"5px",
-                textAlign:"center",
-                cursor:"pointer",
-                backgroundColor:selectedDay===day?"#e0f7fa":"transparent"
-              }}
-              onClick={()=>handleDayClick(day)}
-            >
-              <div>{day}일</div>
-              <div style={{ fontSize:"12px", color:current?"red":"#555", fontWeight:current?"bold":"normal"}}>
-                {current||"예약 없음"}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* 로그인 / 회원가입 모달 */}
-      {isAuthOpen && (
-        <div style={{
-          position:"fixed", top:0,left:0,right:0,bottom:0,
-          backgroundColor:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center"
-        }}>
-          <div style={{ backgroundColor:"#fff", padding:"20px", borderRadius:"10px", width:"300px", textAlign:"center" }}>
-            <h3>{isLoginMode?"로그인":"회원가입"}</h3>
-            <input type="text" placeholder="이름" value={authName} onChange={e=>setAuthName(e.target.value)}
-              style={{ width:"80%", padding:"5px", marginBottom:"10px"}} />
-            <input type="password" placeholder="PIN 4자리" value={authPin} onChange={e=>setAuthPin(e.target.value)}
-              style={{ width:"80%", padding:"5px", marginBottom:"10px"}} maxLength={4} />
-            {isLoginMode?
-              <button onClick={handleLogin} style={{ padding:"5px 10px", marginRight:"5px" }}>로그인</button>
-              :
-              <button onClick={handleSignup} style={{ padding:"5px 10px", marginRight:"5px" }}>회원가입</button>
-            }
-            <button onClick={()=>setIsLoginMode(!isLoginMode)} style={{ padding:"5px 10px", marginTop:"10px" }}>
-              {isLoginMode?"회원가입으로":"로그인으로"}
-            </button>
-            <div style={{ marginTop:"10px", fontSize:"12px", color:"#555" }}>
-              {isLoginMode?"예약하려면 로그인하세요":"이름과 PIN 입력 후 회원가입"}
-            </div>
-            <button onClick={()=>setIsAuthOpen(false)} style={{ position:"absolute", top:"10px", right:"10px", background:"none", border:"none", fontSize:"16px", cursor:"pointer" }}>✖</button>
-          </div>
+      {!user && (
+        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <h3>회원가입</h3>
+          <input
+            type="text"
+            placeholder="이름 입력"
+            value={inputName}
+            onChange={(e) => setInputName(e.target.value)}
+            style={{ padding: "5px", marginRight: "10px" }}
+          />
+          <input
+            type="password"
+            placeholder="PIN 4자리"
+            maxLength={4}
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            style={{ padding: "5px", marginRight: "10px" }}
+          />
+          <button 
+            onClick={handleSignup} 
+            style={{ 
+              padding: "5px 10px", 
+              borderRadius: "5px", 
+              backgroundColor: "#87cefa", 
+              border: "none", 
+              cursor: "pointer" 
+            }}
+          >
+            회원가입
+          </button>
         </div>
+      )}
+
+      {user && (
+        <>
+          {/* 연도, 월 선택 */}
+          <div style={{ marginBottom: "20px", textAlign: "center" }}>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+              {Array.from({ length: 5 }, (_, i) => today.getFullYear() - 2 + i).map((y) => (
+                <option key={y} value={y}>{y}년</option>
+              ))}
+            </select>
+
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ marginLeft: "10px" }}>
+              {Array.from({ length: 12 }, (_, i) => i).map((m) => (
+                <option key={m} value={m}>{m + 1}월</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 요일 헤더 */}
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(7, 1fr)", 
+            textAlign: "center", 
+            fontWeight: "bold", 
+            marginBottom: "10px" 
+          }}>
+            {weekdays.map((day, idx) => (
+              <div 
+                key={day} 
+                style={{ 
+                  color: idx === 0 ? "#FF4C4C" : idx === 6 ? "#1E90FF" : "#000" 
+                }}
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* 날짜 달력 */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "10px" }}>
+            {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} />)}
+
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const day = i + 1;
+              const key = `${year}-${month + 1}-${day}`;
+              const current = reservations[key] || [];
+              const isMyReservation = current.includes(user.name);
+              const past = isPastDate(day);
+
+              return (
+                <div
+                  key={day}
+                  style={{
+                    border: "1px solid #ccc",
+                    borderRadius: "5px",
+                    padding: "5px",
+                    textAlign: "center",
+                    cursor: past ? "not-allowed" : "pointer",
+                    backgroundColor: past
+                      ? "#A9A9A9" // 지난 날짜 = 진한 회색
+                      : selectedDay === day
+                      ? "#e0f7fa"
+                      : "transparent",
+                  }}
+                  onClick={() => !past && setSelectedDay(day)} // 지난 날짜 선택 불가
+                >
+                  <div style={{ color: getDateColor(day) }}>{day}일</div>
+                  <div 
+                    style={{ 
+                      fontSize: "12px", 
+                      color: isMyReservation ? "#0066CC" : current.length > 0 ? "#555" : "#555" 
+                    }}
+                  >
+                    {current.length > 0 ? current.join(", ") : "예약 없음"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 예약 입력창 */}
+          {selectedDay && (
+            <div style={{ marginTop: "20px", textAlign: "center" }}>
+              <h3>{year}년 {month + 1}월 {selectedDay}일 예약</h3>
+              {reservations[`${year}-${month + 1}-${selectedDay}`]?.includes(user.name) ? (
+                <>
+                  <button 
+                    onClick={handleReserve} 
+                    style={{ 
+                      padding: "5px 10px", 
+                      border: "none", 
+                      borderRadius: "5px", 
+                      backgroundColor: "#87cefa", 
+                      cursor: "pointer", 
+                      marginRight: "10px" 
+                    }}
+                  >
+                    예약 취소
+                  </button>
+                  <button 
+                    onClick={handleBack} 
+                    style={{ 
+                      padding: "5px 10px", 
+                      border: "none", 
+                      borderRadius: "5px", 
+                      backgroundColor: "#ccc", 
+                      cursor: "pointer" 
+                    }}
+                  >
+                    돌아가기
+                  </button>
+                </>
+              ) : reservations[`${year}-${month + 1}-${selectedDay}`]?.length >= 2 ? (
+                <>
+                  <button disabled style={{ 
+                    padding: "5px 10px", 
+                    border: "none", 
+                    borderRadius: "5px", 
+                    backgroundColor: "#ccc", 
+                    cursor: "not-allowed", 
+                    marginRight: "10px" 
+                  }}>
+                    예약 불가
+                  </button>
+                  <button 
+                    onClick={handleBack} 
+                    style={{ 
+                      padding: "5px 10px", 
+                      border: "none", 
+                      borderRadius: "5px", 
+                      backgroundColor: "#ccc", 
+                      cursor: "pointer" 
+                    }}
+                  >
+                    돌아가기
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={handleReserve} 
+                    style={{ 
+                      padding: "5px 10px", 
+                      border: "none", 
+                      borderRadius: "5px", 
+                      backgroundColor: "#87cefa", 
+                      cursor: "pointer", 
+                      marginRight: "10px" 
+                    }}
+                  >
+                    예약하기
+                  </button>
+                  <button 
+                    onClick={handleBack} 
+                    style={{ 
+                      padding: "5px 10px", 
+                      border: "none", 
+                      borderRadius: "5px", 
+                      backgroundColor: "#ccc", 
+                      cursor: "pointer" 
+                    }}
+                  >
+                    돌아가기
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

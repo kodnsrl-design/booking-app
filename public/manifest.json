@@ -1,6 +1,6 @@
 {
-  "short_name": "강릉숙소",
-  "name": "강릉숙소",
+  "short_name": "숙소예약",
+  "name": "🏠 숙소 예약 공유",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,6 +20,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
+  "theme_color": "#87cefa",
   "background_color": "#ffffff"
 }
