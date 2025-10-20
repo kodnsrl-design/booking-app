@@ -1,89 +1,85 @@
 import { useState, useEffect } from "react";
-import Holidays from "date-holidays"; // 한국 공휴일 라이브러리
+import { db } from "./firebase"; // firebase.js에서 Firestore 초기화
+import { collection, doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
 export default function App() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth()); // 0~11
-  const [reservations, setReservations] = useState(() => {
-    return JSON.parse(localStorage.getItem("reservations") || "{}");
-  });
-  const [inputName, setInputName] = useState(""); 
-  const [selectedDay, setSelectedDay] = useState(null); 
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem("user");
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [month, setMonth] = useState(today.getMonth());
+  const [reservations, setReservations] = useState({});
+  const [inputName, setInputName] = useState("");
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [user, setUser] = useState(null);
   const [pin, setPin] = useState("");
 
-  // 한국 공휴일 자동 가져오기 (대체공휴일 포함)
-  const [holidays, setHolidays] = useState([]);
+  // Firestore 실시간 구독
   useEffect(() => {
-    const hd = new Holidays("KR");
-    const holidayList = hd.getHolidays(year)
-      .filter(h => h.type === "public") // 법정공휴일만
-      .map(h => {
-        const d = new Date(h.date);
-        return `${String(d.getMonth() + 1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    const unsubscribe = onSnapshot(collection(db, "reservations"), (snapshot) => {
+      const newReservations = {};
+      snapshot.docs.forEach((doc) => {
+        newReservations[doc.id] = doc.data().users;
       });
-    setHolidays(holidayList);
-  }, [year]);
+      setReservations(newReservations);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  // 저장된 예약 업데이트
-  useEffect(() => {
-    localStorage.setItem("reservations", JSON.stringify(reservations));
-  }, [reservations]);
-
-  // 회원가입 함수
+  // 회원가입
   const handleSignup = () => {
     if (!inputName.trim() || pin.length !== 4) {
       alert("이름과 4자리 PIN을 정확히 입력하세요.");
       return;
     }
-    const newUser = { name: inputName.trim(), pin };
-    setUser(newUser);
-    localStorage.setItem("user", JSON.stringify(newUser));
+    setUser({ name: inputName.trim(), pin });
     setInputName("");
     setPin("");
   };
 
-  // 하루 2명 예약 가능 handleReserve
-  const handleReserve = () => {
-    if (!selectedDay) return;
-    const key = `${year}-${month + 1}-${selectedDay}`;
-    const current = reservations[key] || [];
+  // 하루 최대 2명 예약
+  const handleReserve = async () => {
+  if (!user || !selectedDay) return;
+  const key = `${year}-${month + 1}-${selectedDay}`;
 
-    if (current.includes(user.name)) {
-      // 본인 예약 취소
-      const newRes = { ...reservations };
-      newRes[key] = current.filter((name) => name !== user.name);
-      if (newRes[key].length === 0) delete newRes[key];
-      setReservations(newRes);
-      setSelectedDay(null);
-    } else if (current.length >= 2) {
-      alert("이 날짜는 이미 2명이 예약했습니다!");
-    } else {
-      setReservations((prev) => ({ ...prev, [key]: [...current, user.name] }));
-      setSelectedDay(null);
-    }
-  };
+  // 📌 로그 추가: 예약 시도
+  console.log("[예약 시도]", key, "사용자:", user.name);
+
+  const docRef = doc(db, "reservations", key);
+  const docSnap = await getDoc(docRef);
+  const current = docSnap.exists() ? docSnap.data().users : [];
+
+  // 📌 로그 추가: 현재 예약 상태
+  console.log("[현재 예약 상태]", current);
+
+  if (current.includes(user.name)) {
+    // 본인 예약 취소
+    const newUsers = current.filter((name) => name !== user.name);
+    await setDoc(docRef, { users: newUsers });
+    console.log("[예약 취소 완료]", newUsers);
+  } else if (current.length < 2) {
+    // 예약 추가
+    await setDoc(docRef, { users: [...current, user.name] });
+    console.log("[예약 추가 완료]", [...current, user.name]);
+  } else {
+    alert("이미 2명이 예약했습니다!");
+    console.log("[예약 불가] 이미 2명이 예약");
+  }
+
+  setSelectedDay(null);
+};
 
   const handleBack = () => setSelectedDay(null);
 
   const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = new Date(year, month, 1).getDay();
-
   const weekdays = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
 
-  // 요일/공휴일 색상
   const getDateColor = (day) => {
     const date = new Date(year, month, day);
     const dayOfWeek = date.getDay();
-    const mmdd = `${String(month + 1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-    if (holidays.includes(mmdd) || dayOfWeek === 0) return "#FF4C4C"; // 일요일/공휴일 빨강
-    if (dayOfWeek === 6) return "#1E90FF"; // 토요일 파랑
-    return "#000"; // 평일 검정
+    if (dayOfWeek === 0) return "#FF4C4C";
+    if (dayOfWeek === 6) return "#1E90FF";
+    return "#000";
   };
 
   const isPastDate = (day) => {
@@ -115,9 +111,15 @@ export default function App() {
             onChange={(e) => setPin(e.target.value)}
             style={{ padding: "5px", marginRight: "10px" }}
           />
-          <button 
-            onClick={handleSignup} 
-            style={{ padding: "5px 10px", borderRadius: "5px", backgroundColor: "#87cefa", border: "none", cursor: "pointer" }}
+          <button
+            onClick={handleSignup}
+            style={{
+              padding: "5px 10px",
+              borderRadius: "5px",
+              backgroundColor: "#87cefa",
+              border: "none",
+              cursor: "pointer",
+            }}
           >
             회원가입
           </button>
@@ -130,21 +132,39 @@ export default function App() {
           <div style={{ marginBottom: "20px", textAlign: "center" }}>
             <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
               {Array.from({ length: 5 }, (_, i) => today.getFullYear() - 2 + i).map((y) => (
-                <option key={y} value={y}>{y}년</option>
+                <option key={y} value={y}>
+                  {y}년
+                </option>
               ))}
             </select>
-
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ marginLeft: "10px" }}>
+            <select
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+              style={{ marginLeft: "10px" }}
+            >
               {Array.from({ length: 12 }, (_, i) => i).map((m) => (
-                <option key={m} value={m}>{m + 1}월</option>
+                <option key={m} value={m}>
+                  {m + 1}월
+                </option>
               ))}
             </select>
           </div>
 
           {/* 요일 헤더 */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontWeight: "bold", marginBottom: "10px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              textAlign: "center",
+              fontWeight: "bold",
+              marginBottom: "10px",
+            }}
+          >
             {weekdays.map((day, idx) => (
-              <div key={day} style={{ color: idx === 0 ? "#FF4C4C" : idx === 6 ? "#1E90FF" : "#000" }}>
+              <div
+                key={day}
+                style={{ color: idx === 0 ? "#FF4C4C" : idx === 6 ? "#1E90FF" : "#000" }}
+              >
                 {day}
               </div>
             ))}
@@ -153,7 +173,6 @@ export default function App() {
           {/* 날짜 달력 */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "10px" }}>
             {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} />)}
-
             {Array.from({ length: daysInMonth }, (_, i) => {
               const day = i + 1;
               const key = `${year}-${month + 1}-${day}`;
@@ -175,7 +194,12 @@ export default function App() {
                   onClick={() => !past && setSelectedDay(day)}
                 >
                   <div style={{ color: getDateColor(day) }}>{day}일</div>
-                  <div style={{ fontSize: "12px", color: isMyReservation ? "#0066CC" : current.length > 0 ? "#555" : "#555" }}>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: isMyReservation ? "#0066CC" : current.length > 0 ? "#555" : "#555",
+                    }}
+                  >
                     {current.length > 0 ? current.join(", ") : "예약 없음"}
                   </div>
                 </div>
@@ -186,21 +210,92 @@ export default function App() {
           {/* 예약 입력창 */}
           {selectedDay && (
             <div style={{ marginTop: "20px", textAlign: "center" }}>
-              <h3>{year}년 {month + 1}월 {selectedDay}일 예약</h3>
+              <h3>
+                {year}년 {month + 1}월 {selectedDay}일 예약
+              </h3>
               {reservations[`${year}-${month + 1}-${selectedDay}`]?.includes(user.name) ? (
                 <>
-                  <button onClick={handleReserve} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#87cefa", cursor: "pointer", marginRight: "10px" }}>예약 취소</button>
-                  <button onClick={handleBack} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "pointer" }}>돌아가기</button>
+                  <button
+                    onClick={handleReserve}
+                    style={{
+                      padding: "5px 10px",
+                      border: "none",
+                      borderRadius: "5px",
+                      backgroundColor: "#87cefa",
+                      cursor: "pointer",
+                      marginRight: "10px",
+                    }}
+                  >
+                    예약 취소
+                  </button>
+                  <button
+                    onClick={handleBack}
+                    style={{
+                      padding: "5px 10px",
+                      border: "none",
+                      borderRadius: "5px",
+                      backgroundColor: "#ccc",
+                      cursor: "pointer",
+                    }}
+                  >
+                    돌아가기
+                  </button>
                 </>
               ) : reservations[`${year}-${month + 1}-${selectedDay}`]?.length >= 2 ? (
                 <>
-                  <button disabled style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "not-allowed", marginRight: "10px" }}>예약 불가</button>
-                  <button onClick={handleBack} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "pointer" }}>돌아가기</button>
+                  <button
+                    disabled
+                    style={{
+                      padding: "5px 10px",
+                      border: "none",
+                      borderRadius: "5px",
+                      backgroundColor: "#ccc",
+                      cursor: "not-allowed",
+                      marginRight: "10px",
+                    }}
+                  >
+                    예약 불가
+                  </button>
+                  <button
+                    onClick={handleBack}
+                    style={{
+                      padding: "5px 10px",
+                      border: "none",
+                      borderRadius: "5px",
+                      backgroundColor: "#ccc",
+                      cursor: "pointer",
+                    }}
+                  >
+                    돌아가기
+                  </button>
                 </>
               ) : (
                 <>
-                  <button onClick={handleReserve} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#87cefa", cursor: "pointer", marginRight: "10px" }}>예약하기</button>
-                  <button onClick={handleBack} style={{ padding: "5px 10px", border: "none", borderRadius: "5px", backgroundColor: "#ccc", cursor: "pointer" }}>돌아가기</button>
+                  <button
+                    onClick={handleReserve}
+                    style={{
+                      padding: "5px 10px",
+                      border: "none",
+                      borderRadius: "5px",
+                      backgroundColor: "#87cefa",
+                      cursor: "pointer",
+                      marginRight: "10px",
+                    }}
+                  >
+                    예약하기
+                  </button>
+                  <button
+                    onClick={handleBack}
+                    style={{
+                      padding: "5px 10px",
+                      border: "none",
+                      borderRadius: "5px",
+                      backgroundColor: "#ccc",
+                      cursor: "pointer",
+                    }}
+                  >
+                    돌아가기
+                  </button>
                 </>
               )}
             </div>
