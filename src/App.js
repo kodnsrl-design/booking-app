@@ -12,6 +12,14 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [pin, setPin] = useState("");
 
+  // localStorage에서 로그인 정보 불러오기
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
   // Firestore 실시간 구독
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "reservations"), (snapshot) => {
@@ -30,42 +38,35 @@ export default function App() {
       alert("이름과 4자리 PIN을 정확히 입력하세요.");
       return;
     }
-    setUser({ name: inputName.trim(), pin });
+    const newUser = { name: inputName.trim(), pin };
+    setUser(newUser);
+    localStorage.setItem("user", JSON.stringify(newUser)); // 로그인 상태 저장
     setInputName("");
     setPin("");
   };
 
   // 하루 최대 2명 예약
   const handleReserve = async () => {
-  if (!user || !selectedDay) return;
-  const key = `${year}-${month + 1}-${selectedDay}`;
+    if (!user || !selectedDay) return;
+    const key = `${year}-${month + 1}-${selectedDay}`;
 
-  // 📌 로그 추가: 예약 시도
-  console.log("[예약 시도]", key, "사용자:", user.name);
+    const docRef = doc(db, "reservations", key);
+    const docSnap = await getDoc(docRef);
+    const current = docSnap.exists() ? docSnap.data().users : [];
 
-  const docRef = doc(db, "reservations", key);
-  const docSnap = await getDoc(docRef);
-  const current = docSnap.exists() ? docSnap.data().users : [];
+    if (current.includes(user.name)) {
+      // 본인 예약 취소
+      const newUsers = current.filter((name) => name !== user.name);
+      await setDoc(docRef, { users: newUsers });
+    } else if (current.length < 2) {
+      // 예약 추가
+      await setDoc(docRef, { users: [...current, user.name] });
+    } else {
+      alert("이미 2명이 예약했습니다!");
+    }
 
-  // 📌 로그 추가: 현재 예약 상태
-  console.log("[현재 예약 상태]", current);
-
-  if (current.includes(user.name)) {
-    // 본인 예약 취소
-    const newUsers = current.filter((name) => name !== user.name);
-    await setDoc(docRef, { users: newUsers });
-    console.log("[예약 취소 완료]", newUsers);
-  } else if (current.length < 2) {
-    // 예약 추가
-    await setDoc(docRef, { users: [...current, user.name] });
-    console.log("[예약 추가 완료]", [...current, user.name]);
-  } else {
-    alert("이미 2명이 예약했습니다!");
-    console.log("[예약 불가] 이미 2명이 예약");
-  }
-
-  setSelectedDay(null);
-};
+    setSelectedDay(null);
+  };
 
   const handleBack = () => setSelectedDay(null);
 
@@ -171,7 +172,7 @@ export default function App() {
           </div>
 
           {/* 날짜 달력 */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px" }}>
             {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} />)}
             {Array.from({ length: daysInMonth }, (_, i) => {
               const day = i + 1;
@@ -193,11 +194,17 @@ export default function App() {
                   }}
                   onClick={() => !past && setSelectedDay(day)}
                 >
-                  <div style={{ color: getDateColor(day) }}>{day}일</div>
+                  <div style={{ color: getDateColor(day), fontSize: "14px", whiteSpace: "nowrap" }}>
+                    {day}일
+                  </div>
                   <div
                     style={{
                       fontSize: "12px",
-                      color: isMyReservation ? "#0066CC" : current.length > 0 ? "#555" : "#555",
+                      color: isMyReservation
+                        ? "#0066CC"
+                        : current.length > 0
+                        ? "#28a745" // 다른 사람 예약
+                        : "#555",
                     }}
                   >
                     {current.length > 0 ? current.join(", ") : "예약 없음"}
